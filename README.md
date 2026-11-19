@@ -35,3 +35,4 @@ at `http://localhost:8000/`.
 The backend requires `SECRET_KEY` and `ADMIN_PASSWORD` at startup. Database
 credentials and admin credentials belong in the local `.env` file or another
 private environment-variable store, never in source control.
+# order-website
