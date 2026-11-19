@@ -1,0 +1,60 @@
+.adm-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #eff0f5; padding: 16px; }
+.adm-login .adm-box { width: 100%; max-width: 360px; }
+.adm-box { background: #fff; border-radius: 4px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,.1); margin-bottom: 18px; }
+.adm-box h2, .adm-box h3 { margin-top: 0; }
+.adm-error { color: #d00; font-weight: 600; }
+.adm-ok { color: #1fa34a; font-weight: 600; }
+.adm-muted { color: #888; }
+.adm-btn { width: 100%; margin-top: 14px; padding: 12px; background: #f85606; color: #fff; border: 0; border-radius: 3px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.adm-btn.gray { background: #999; }
+
+.adm-top { background: #f85606; color: #fff; display: flex; align-items: center; gap: 16px; padding: 10px 16px; position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+.adm-top b { font-size: 20px; }
+.adm-top nav { display: flex; gap: 6px; flex: 1; }
+.adm-top nav button, .adm-out { background: rgba(255,255,255,.2); color: #fff; border: 0; padding: 8px 16px; border-radius: 3px; cursor: pointer; font-size: 14px; }
+.adm-top nav button.on { background: #fff; color: #f85606; font-weight: 700; }
+.adm-main { max-width: 1000px; margin: 0 auto; padding: 16px; }
+
+.adm-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.adm-stat { background: #fff; padding: 14px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.08); display: flex; flex-direction: column; gap: 4px; }
+.adm-stat small { color: #777; }
+.adm-stat b { font-size: 24px; }
+.adm-stat.warn b { color: #e08a00; }
+.adm-stat.ok b { color: #1fa34a; }
+
+.adm-filters { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+.adm-filters button { background: #fff; border: 1px solid #ddd; padding: 7px 12px; border-radius: 16px; cursor: pointer; text-transform: capitalize; font-size: 13px; }
+.adm-filters button.on { background: #f85606; color: #fff; border-color: #f85606; }
+.adm-filters .refresh { margin-left: auto; text-transform: none; }
+
+.adm-order { background: #fff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 12px; overflow: hidden; }
+.adm-order-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #eee; background: #fafafa; }
+.adm-date { margin-left: 12px; color: #888; font-size: 13px; }
+.adm-order-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 14px 16px; }
+.adm-order-body p { margin: 4px 0; font-size: 14px; }
+.adm-note { background: #fff8e1; padding: 6px 8px; border-radius: 3px; }
+.adm-line { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; gap: 10px; }
+.adm-total { font-weight: 700; border-top: 1px solid #eee; margin-top: 4px; padding-top: 8px; }
+.adm-order-foot { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid #eee; }
+.adm-order-foot label { margin: 0; }
+.adm-order-foot select { width: auto; }
+
+.adm-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; background: #eee; }
+.adm-badge.pending { background: #fff3cd; color: #946200; }
+.adm-badge.confirmed { background: #d6e9ff; color: #0a4fa3; }
+.adm-badge.shipped { background: #e5d9ff; color: #5a2aa8; }
+.adm-badge.delivered { background: #d4f5de; color: #146c34; }
+.adm-badge.cancelled { background: #fddede; color: #a31515; }
+
+.adm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.adm-check { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.adm-check input { width: auto; }
+.adm-table-wrap { overflow-x: auto; background: #fff; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.adm-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.adm-table th, .adm-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #eee; }
+.adm-table th { background: #fafafa; }
+.adm-actions button { margin-right: 6px; padding: 5px 12px; border: 1px solid #f85606; background: #fff; color: #f85606; border-radius: 3px; cursor: pointer; }
+
+@media (max-width: 700px) {
+  .adm-order-body, .adm-grid { grid-template-columns: 1fr; }
+}
