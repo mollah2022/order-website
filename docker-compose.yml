@@ -21,6 +21,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - upload_data:/app/uploads
     depends_on:
       - db
 
@@ -38,3 +39,4 @@ services:
 
 volumes:
   pgdata:
+  upload_data:

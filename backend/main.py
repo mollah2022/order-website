@@ -1,13 +1,16 @@
 import os
+import uuid
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Optional
 
 import bcrypt
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
 from jose import jwt, JWTError
 from pydantic import BaseModel, Field
 
@@ -29,13 +32,20 @@ app.add_middleware(
 )
 oauth2 = OAuth2PasswordBearer(tokenUrl="/api/admin/login")
 
+UPLOAD_DIR = Path("/app/uploads")
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
 
 def get_conn():
-    return psycopg2.connect(
-        host=DB_HOST, dbname=DB_NAME, user=DB_USER,
-        password=DB_PASS, cursor_factory=RealDictCursor,
-    )
-
+    connection_options = {
+        "host": DB_HOST,
+        "dbname": DB_NAME,
+        "user": DB_USER,
+        "password": DB_PASS,
+        "cursor_factory": RealDictCursor,
+    }
+    return psycopg2.connect(**connection_options)
 
 @app.on_event("startup")
 def create_admin():
@@ -269,6 +279,23 @@ def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_ad
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@app.post("/api/admin/products/upload")
+async def upload_product_image(
+    file: UploadFile = File(...),
+    admin: str = Depends(current_admin),
+):
+    allowed = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
+    if file.content_type not in allowed:
+        raise HTTPException(400, "Only JPG, PNG, WEBP, or GIF images are allowed")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(400, "Image must be 5 MB or smaller")
+    filename = f"{uuid.uuid4().hex}{allowed[file.content_type]}"
+    path = UPLOAD_DIR / filename
+    path.write_bytes(content)
+    return {"url": f"/uploads/{filename}"}
 
 
 class ProductIn(BaseModel):
