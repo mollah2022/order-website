@@ -17,6 +17,8 @@ services:
     env_file: .env
     environment:
       DB_HOST: db
+    volumes:
+      - upload_data:/app/uploads
     depends_on:
       - db
 
@@ -33,3 +35,4 @@ services:
 
 volumes:
   pgdata:
+  upload_data:

@@ -309,10 +309,26 @@ function Orders({ token, logout }) {
 
 const EMPTY = { name: '', description: '', price: '', image_url: '', stock: 100, is_active: true }
 
+async function uploadProductImage(file, token) {
+  const body = new FormData()
+  body.append('file', file)
+  const res = await fetch('/api/admin/products/upload', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body,
+  })
+  const data = await res.json()
+  if (res.status === 401) throw new Error('UNAUTH')
+  if (!res.ok) throw new Error(data.detail || 'Image upload failed')
+  return data.url
+}
+
 function Products({ token, logout }) {
   const [products, setProducts] = useState([])
   const [form, setForm] = useState(EMPTY)
   const [editId, setEditId] = useState(null)
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState('')
   const [msg, setMsg] = useState('')
 
     const copyLink = (p) => {
@@ -346,13 +362,14 @@ function Products({ token, logout }) {
 
   const save = async (e) => {
     e.preventDefault()
-    const body = {
-      ...form,
-      price: Number(form.price),
-      stock: Number(form.stock),
-      image_url: form.image_url || null,
-    }
     try {
+      const uploadedUrl = imageFile ? await uploadProductImage(imageFile, token) : (form.image_url || null)
+      const body = {
+        ...form,
+        price: Number(form.price),
+        stock: Number(form.stock),
+        image_url: uploadedUrl,
+      }
       await api(editId ? `/api/admin/products/${editId}` : '/api/admin/products', token, {
         method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -360,6 +377,8 @@ function Products({ token, logout }) {
       })
       setMsg(editId ? 'Product updated ✓' : 'Product added ✓')
       setForm(EMPTY)
+      setImageFile(null)
+      setImagePreview('')
       setEditId(null)
       load()
     } catch (e) {
@@ -377,6 +396,8 @@ function Products({ token, logout }) {
       stock: p.stock,
       is_active: p.is_active,
     })
+    setImageFile(null)
+    setImagePreview(p.image_url || '')
     setMsg('')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -412,8 +433,23 @@ function Products({ token, logout }) {
             <input type="number" min="0" value={form.stock} onChange={set('stock')} />
           </div>
           <div>
-            <label>Image URL</label>
-            <input placeholder="https://..." value={form.image_url} onChange={set('image_url')} />
+            <label>Product Image</label>
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null
+                setImageFile(file)
+                setImagePreview(file ? URL.createObjectURL(file) : (form.image_url || ''))
+              }}
+            />
+            {imagePreview && (
+              <img
+                src={imagePreview}
+                alt="Product preview"
+                style={{ width: 120, height: 120, objectFit: 'cover', marginTop: 8, borderRadius: 4 }}
+              />
+            )}
           </div>
         </div>
         <label>Description</label>
@@ -425,7 +461,7 @@ function Products({ token, logout }) {
         {msg && <p className="adm-ok">{msg}</p>}
         <button className="adm-btn">{editId ? 'UPDATE PRODUCT' : 'ADD PRODUCT'}</button>
         {editId && (
-          <button type="button" className="adm-btn gray" onClick={() => { setEditId(null); setForm(EMPTY) }}>
+          <button type="button" className="adm-btn gray" onClick={() => { setEditId(null); setForm(EMPTY); setImageFile(null); setImagePreview('') }}>
             CANCEL
           </button>
         )}
