@@ -15,6 +15,7 @@ CREATE TABLE orders (
     phone VARCHAR(20) NOT NULL,
     address TEXT NOT NULL,
     area VARCHAR(20) NOT NULL,
+    area_name VARCHAR(100),
     note TEXT,
     subtotal NUMERIC(10,2) NOT NULL,
     delivery_charge NUMERIC(10,2) NOT NULL,
@@ -42,6 +43,13 @@ CREATE TABLE admins (
 CREATE TABLE settings (
     key VARCHAR(50) PRIMARY KEY,
     value VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE delivery_areas (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    fee NUMERIC(10, 2) NOT NULL CHECK (fee >= 0),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 INSERT INTO settings (key, value) VALUES

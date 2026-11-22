@@ -15,9 +15,10 @@ A product ordering website with a React frontend, FastAPI backend, and PostgreSQ
 The shop is available at `http://localhost/`, and the admin dashboard is at
 `http://localhost/admin`.
 
-The admin dashboard lets you manage orders, products, stock, and delivery fees.
-Delivery fees configured there are used by checkout and included in new order
-totals.
+The admin dashboard lets you manage orders, products, stock, and delivery areas.
+You can add areas, change their names and fees, and disable or re-enable them.
+Active areas appear in checkout, and their configured fees are included in new
+order totals.
 
 ## Development
 

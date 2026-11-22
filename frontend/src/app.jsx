@@ -4,7 +4,8 @@ const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
 
 export default function App() {
   const [products, setProducts] = useState([])
-  const [charges, setCharges] = useState({ dhaka: 60, outside: 120 })
+  const [deliveryAreas, setDeliveryAreas] = useState([])
+  const [areasLoading, setAreasLoading] = useState(true)
   const [qty, setQty] = useState({})
   const [search, setSearch] = useState('')
   const [form, setForm] = useState({
@@ -22,7 +23,22 @@ export default function App() {
     fetch('/api/products')
       .then((r) => r.json())
       .then(setProducts)
-    fetch('/api/delivery-charges').then((r) => r.json()).then(setCharges)
+    fetch('/api/delivery-areas')
+      .then((r) => {
+        if (!r.ok) throw new Error('Could not load delivery areas.')
+        return r.json()
+      })
+      .then((areas) => {
+        setDeliveryAreas(areas)
+        setForm((current) => ({
+          ...current,
+          area: areas.some((area) => String(area.id) === current.area)
+            ? current.area
+            : String(areas[0]?.id || ''),
+        }))
+      })
+      .catch((err) => setError(err.message))
+      .finally(() => setAreasLoading(false))
   }, [])
 
   const change = (id, d) =>
@@ -35,7 +51,8 @@ export default function App() {
   const selected = products.filter((p) => (qty[p.id] || 0) > 0)
   const itemCount = selected.reduce((s, p) => s + qty[p.id], 0)
   const subtotal = selected.reduce((s, p) => s + p.price * qty[p.id], 0)
-  const delivery = selected.length ? charges[form.area] : 0
+  const selectedArea = deliveryAreas.find((area) => String(area.id) === form.area)
+  const delivery = selected.length ? Number(selectedArea?.fee || 0) : 0
   const total = subtotal + delivery
 
   const visible = products.filter((p) =>
@@ -201,9 +218,21 @@ export default function App() {
               />
 
               <label>Delivery Area *</label>
-              <select value={form.area} onChange={setField('area')}>
-                <option value="dhaka">Inside Dhaka ({money(charges.dhaka)})</option>
-                <option value="outside">Outside Dhaka ({money(charges.outside)})</option>
+              <select
+                required
+                value={form.area}
+                onChange={setField('area')}
+                disabled={areasLoading || deliveryAreas.length === 0}
+              >
+                {areasLoading && <option value="">Loading areas...</option>}
+                {!areasLoading && deliveryAreas.length === 0 && (
+                  <option value="">No delivery areas available</option>
+                )}
+                {deliveryAreas.map((area) => (
+                  <option key={area.id} value={area.id}>
+                    {area.name} ({money(area.fee)})
+                  </option>
+                ))}
               </select>
 
               <label>Full Address *</label>

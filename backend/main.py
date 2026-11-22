@@ -53,6 +53,33 @@ def create_admin():
         raise RuntimeError("SECRET_KEY and ADMIN_PASSWORD environment variables are required")
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute(
+        """CREATE TABLE IF NOT EXISTS delivery_areas (
+               id SERIAL PRIMARY KEY,
+               name VARCHAR(100) UNIQUE NOT NULL,
+               fee NUMERIC(10, 2) NOT NULL CHECK (fee >= 0),
+               is_active BOOLEAN NOT NULL DEFAULT TRUE
+           )"""
+    )
+    cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS area_name VARCHAR(100)")
+    cur.execute("SELECT COUNT(*) AS count FROM delivery_areas")
+    if cur.fetchone()["count"] == 0:
+        settings = get_settings(cur)
+        cur.executemany(
+            "INSERT INTO delivery_areas (name, fee) VALUES (%s, %s)",
+            [
+                ("Inside Dhaka", settings.get("delivery_dhaka", 60)),
+                ("Outside Dhaka", settings.get("delivery_outside", 120)),
+            ],
+        )
+    cur.execute(
+        """UPDATE orders SET area_name = CASE area
+               WHEN 'dhaka' THEN 'Inside Dhaka'
+               WHEN 'outside' THEN 'Outside Dhaka'
+               ELSE area
+           END
+           WHERE area_name IS NULL"""
+    )
     cur.execute("SELECT id FROM admins WHERE username=%s", (ADMIN_USERNAME,))
     if not cur.fetchone():
         hashed = bcrypt.hashpw(ADMIN_PASSWORD.encode(), bcrypt.gensalt()).decode()
@@ -60,7 +87,7 @@ def create_admin():
             "INSERT INTO admins (username, password_hash) VALUES (%s,%s)",
             (ADMIN_USERNAME, hashed),
         )
-        conn.commit()
+    conn.commit()
     conn.close()
 
 
@@ -98,6 +125,18 @@ def delivery_charges():
     return {"dhaka": s["delivery_dhaka"], "outside": s["delivery_outside"]}
 
 
+@app.get("/api/delivery-areas")
+def delivery_areas():
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, name, fee FROM delivery_areas WHERE is_active=TRUE ORDER BY id"
+    )
+    areas = cur.fetchall()
+    conn.close()
+    return areas
+
+
 class Item(BaseModel):
     product_id: int
     quantity: int = Field(ge=1, le=100)
@@ -114,13 +153,21 @@ class OrderIn(BaseModel):
 
 @app.post("/api/orders")
 def create_order(order: OrderIn):
-    if order.area not in ("dhaka", "outside"):
-        raise HTTPException(400, "Invalid area")
+    try:
+        area_id = int(order.area)
+    except ValueError:
+        raise HTTPException(400, "Invalid delivery area")
     conn = get_conn()
     cur = conn.cursor()
     try:
-        s = get_settings(cur)
-        delivery = s["delivery_dhaka"] if order.area == "dhaka" else s["delivery_outside"]
+        cur.execute(
+            "SELECT name, fee FROM delivery_areas WHERE id=%s AND is_active=TRUE",
+            (area_id,),
+        )
+        area = cur.fetchone()
+        if not area:
+            raise HTTPException(400, "Selected delivery area is unavailable")
+        delivery = float(area["fee"])
         subtotal = 0
         lines = []
         for it in order.items:
@@ -143,11 +190,11 @@ def create_order(order: OrderIn):
             lines.append((p, it.quantity))
         total = subtotal + delivery
         cur.execute(
-            """INSERT INTO orders (customer_name, phone, address, area, note,
-               subtotal, delivery_charge, total)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (order.customer_name, order.phone, order.address, order.area,
-             order.note, subtotal, delivery, total),
+            """INSERT INTO orders (customer_name, phone, address, area, area_name,
+               note, subtotal, delivery_charge, total)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (order.customer_name, order.phone, order.address, str(area_id),
+             area["name"], order.note, subtotal, delivery, total),
         )
         order_id = cur.fetchone()["id"]
         for p, qty in lines:
@@ -212,6 +259,104 @@ def admin_delivery_charges(admin: str = Depends(current_admin)):
         "dhaka": settings["delivery_dhaka"],
         "outside": settings["delivery_outside"],
     }
+
+
+@app.get("/api/admin/delivery-areas")
+def admin_delivery_areas(admin: str = Depends(current_admin)):
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT id, name, fee, is_active FROM delivery_areas ORDER BY id")
+    areas = cur.fetchall()
+    conn.close()
+    return areas
+
+
+class DeliveryAreaIn(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    fee: float = Field(ge=0)
+
+
+@app.post("/api/admin/delivery-areas")
+def add_delivery_area(area: DeliveryAreaIn, admin: str = Depends(current_admin)):
+    name = area.name.strip()
+    if len(name) < 2:
+        raise HTTPException(422, "Area name must contain at least 2 non-space characters")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO delivery_areas (name, fee) VALUES (%s, %s)
+               RETURNING id, name, fee, is_active""",
+            (name, area.fee),
+        )
+        result = cur.fetchone()
+        conn.commit()
+        return result
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(409, "A delivery area with this name already exists")
+    finally:
+        conn.close()
+
+
+@app.put("/api/admin/delivery-areas/{area_id}")
+def update_delivery_area(
+    area_id: int,
+    area: DeliveryAreaIn,
+    admin: str = Depends(current_admin),
+):
+    name = area.name.strip()
+    if len(name) < 2:
+        raise HTTPException(422, "Area name must contain at least 2 non-space characters")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """UPDATE delivery_areas SET name=%s, fee=%s
+               WHERE id=%s RETURNING id, name, fee, is_active""",
+            (name, area.fee, area_id),
+        )
+        result = cur.fetchone()
+        if not result:
+            raise HTTPException(404, "Delivery area not found")
+        conn.commit()
+        return result
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        raise HTTPException(409, "A delivery area with this name already exists")
+    finally:
+        conn.close()
+
+
+@app.patch("/api/admin/delivery-areas/{area_id}/active")
+def set_delivery_area_active(
+    area_id: int,
+    active: bool,
+    admin: str = Depends(current_admin),
+):
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT is_active FROM delivery_areas WHERE id=%s FOR UPDATE", (area_id,))
+        area = cur.fetchone()
+        if not area:
+            raise HTTPException(404, "Delivery area not found")
+        if area["is_active"] and not active:
+            cur.execute("SELECT COUNT(*) AS count FROM delivery_areas WHERE is_active=TRUE")
+            if cur.fetchone()["count"] <= 1:
+                raise HTTPException(400, "At least one delivery area must remain active")
+        cur.execute(
+            "UPDATE delivery_areas SET is_active=%s WHERE id=%s RETURNING id, name, fee, is_active",
+            (active, area_id),
+        )
+        result = cur.fetchone()
+        conn.commit()
+        return result
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 class DeliveryChargesIn(BaseModel):

@@ -110,7 +110,8 @@ function Dashboard({ token, logout }) {
 }
 
 function DeliverySettings({ token, logout }) {
-  const [charges, setCharges] = useState({ dhaka: '', outside: '' })
+  const [areas, setAreas] = useState([])
+  const [newArea, setNewArea] = useState({ name: '', fee: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -118,8 +119,7 @@ function DeliverySettings({ token, logout }) {
 
   const load = useCallback(async () => {
     try {
-      const data = await api('/api/admin/delivery-charges', token)
-      setCharges({ dhaka: String(data.dhaka), outside: String(data.outside) })
+      setAreas(await api('/api/admin/delivery-areas', token))
       setError('')
     } catch (e) {
       if (e.message === 'UNAUTH') {
@@ -134,22 +134,20 @@ function DeliverySettings({ token, logout }) {
 
   useEffect(() => { load() }, [load])
 
-  const save = async (e) => {
+  const addArea = async (e) => {
     e.preventDefault()
     setError('')
     setMessage('')
     setSaving(true)
     try {
-      const data = await api('/api/admin/delivery-charges', token, {
-        method: 'PUT',
+      await api('/api/admin/delivery-areas', token, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          dhaka: Number(charges.dhaka),
-          outside: Number(charges.outside),
-        }),
+        body: JSON.stringify({ name: newArea.name, fee: Number(newArea.fee) }),
       })
-      setCharges({ dhaka: String(data.dhaka), outside: String(data.outside) })
-      setMessage('Delivery fees updated successfully.')
+      setNewArea({ name: '', fee: '' })
+      setMessage('Delivery area added successfully.')
+      await load()
     } catch (e) {
       if (e.message === 'UNAUTH') {
         logout()
@@ -161,44 +159,132 @@ function DeliverySettings({ token, logout }) {
     }
   }
 
-  if (loading) return <p>Loading delivery fees...</p>
+  const saveArea = async (area) => {
+    setError('')
+    setMessage('')
+    try {
+      await api(`/api/admin/delivery-areas/${area.id}`, token, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: area.name, fee: Number(area.fee) }),
+      })
+      setMessage('Delivery area updated successfully.')
+      await load()
+    } catch (e) {
+      if (e.message === 'UNAUTH') {
+        logout()
+      } else {
+        setError(e.message)
+      }
+    }
+  }
+
+  const toggleArea = async (area) => {
+    setError('')
+    setMessage('')
+    try {
+      await api(`/api/admin/delivery-areas/${area.id}/active?active=${!area.is_active}`, token, {
+        method: 'PATCH',
+      })
+      setMessage(`Delivery area ${area.is_active ? 'disabled' : 'enabled'}.`)
+      await load()
+    } catch (e) {
+      if (e.message === 'UNAUTH') {
+        logout()
+      } else {
+        setError(e.message)
+      }
+    }
+  }
+
+  if (loading) return <p>Loading delivery areas...</p>
 
   return (
-    <form className="adm-box" onSubmit={save}>
-      <h3>Delivery Fees</h3>
-      <p className="adm-muted">Set the delivery fee customers will pay at checkout.</p>
-      <div className="adm-grid">
-        <div>
-          <label htmlFor="delivery-dhaka">Inside Dhaka (৳)</label>
-          <input
-            id="delivery-dhaka"
-            type="number"
-            min="0"
-            step="any"
-            required
-            value={charges.dhaka}
-            onChange={(e) => setCharges({ ...charges, dhaka: e.target.value })}
-          />
+    <>
+      <form className="adm-box" onSubmit={addArea}>
+        <h3>Add Delivery Area</h3>
+        <p className="adm-muted">Checkout will show all active delivery areas and their fees.</p>
+        <div className="adm-grid">
+          <div>
+            <label htmlFor="new-area-name">Area name</label>
+            <input
+              id="new-area-name"
+              required
+              minLength="2"
+              maxLength="100"
+              value={newArea.name}
+              onChange={(e) => setNewArea({ ...newArea, name: e.target.value })}
+            />
+          </div>
+          <div>
+            <label htmlFor="new-area-fee">Delivery fee (৳)</label>
+            <input
+              id="new-area-fee"
+              required
+              type="number"
+              min="0"
+              step="any"
+              value={newArea.fee}
+              onChange={(e) => setNewArea({ ...newArea, fee: e.target.value })}
+            />
+          </div>
         </div>
-        <div>
-          <label htmlFor="delivery-outside">Outside Dhaka (৳)</label>
-          <input
-            id="delivery-outside"
-            type="number"
-            min="0"
-            step="any"
-            required
-            value={charges.outside}
-            onChange={(e) => setCharges({ ...charges, outside: e.target.value })}
-          />
+        {error && <p className="adm-error">{error}</p>}
+        {message && <p className="adm-ok">{message}</p>}
+        <button className="adm-btn" disabled={saving}>
+          {saving ? 'ADDING...' : 'ADD DELIVERY AREA'}
+        </button>
+      </form>
+
+      <h3>Delivery Areas ({areas.length})</h3>
+      {areas.length === 0 ? (
+        <p className="adm-muted">No delivery areas configured.</p>
+      ) : (
+        <div className="adm-table-wrap">
+          <table className="adm-table">
+            <thead>
+              <tr><th>Area name</th><th>Fee (৳)</th><th>Status</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+              {areas.map((area) => (
+                <tr key={area.id}>
+                  <td>
+                    <input
+                      aria-label={`Area name ${area.id}`}
+                      minLength="2"
+                      maxLength="100"
+                      value={area.name}
+                      onChange={(e) => setAreas((current) => current.map((item) =>
+                        item.id === area.id ? { ...item, name: e.target.value } : item
+                      ))}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      aria-label={`Delivery fee ${area.id}`}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={area.fee}
+                      onChange={(e) => setAreas((current) => current.map((item) =>
+                        item.id === area.id ? { ...item, fee: e.target.value } : item
+                      ))}
+                    />
+                  </td>
+                  <td>{area.is_active ? 'Active' : 'Disabled'}</td>
+                  <td className="adm-actions">
+                    <button type="button" onClick={() => saveArea(area)}>Save</button>
+                    <button type="button" onClick={() => toggleArea(area)}>
+                      {area.is_active ? 'Disable' : 'Enable'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </div>
-      {error && <p className="adm-error">{error}</p>}
-      {message && <p className="adm-ok">{message}</p>}
-      <button className="adm-btn" disabled={saving}>
-        {saving ? 'SAVING...' : 'SAVE DELIVERY FEES'}
-      </button>
-    </form>
+      )}
+    </>
   )
 }
 
@@ -279,7 +365,7 @@ function Orders({ token, logout }) {
               <p>📞 <a href={`tel:${o.phone}`}>{o.phone}</a></p>
               <p>📍 {o.address}</p>
               <p className="adm-muted">
-                Area: {o.area === 'dhaka' ? 'Inside Dhaka' : 'Outside Dhaka'}
+                Area: {o.area_name || ({ dhaka: 'Inside Dhaka', outside: 'Outside Dhaka' }[o.area] || o.area)}
               </p>
               {o.note && <p className="adm-note">Note: {o.note}</p>}
             </div>
