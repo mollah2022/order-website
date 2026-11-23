@@ -13,6 +13,7 @@ CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     customer_name VARCHAR(150) NOT NULL,
     phone VARCHAR(20) NOT NULL,
+    customer_email VARCHAR(254) NOT NULL DEFAULT '',
     address TEXT NOT NULL,
     area VARCHAR(20) NOT NULL,
     area_name VARCHAR(100),
@@ -22,6 +23,7 @@ CREATE TABLE orders (
     total NUMERIC(10,2) NOT NULL,
     payment_method VARCHAR(20) DEFAULT 'COD',
     status VARCHAR(20) DEFAULT 'pending',
+    stock_deducted BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT NOW()
 );
 

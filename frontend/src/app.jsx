@@ -2,6 +2,25 @@ import { useEffect, useState } from 'react'
 
 const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
 
+function Header({ search, itemCount, onSearch, onCart }) {
+  return (
+    <header className="topbar">
+      <div className="topbar-inner">
+        <div className="logo">MyShop</div>
+        <input
+          className="search"
+          placeholder="Search in MyShop"
+          value={search}
+          onChange={onSearch}
+        />
+        <button type="button" className="cart-btn" onClick={onCart}>
+          🛒 <span className="badge">{itemCount}</span>
+        </button>
+      </div>
+    </header>
+  )
+}
+
 export default function App() {
   const [products, setProducts] = useState([])
   const [deliveryAreas, setDeliveryAreas] = useState([])
@@ -11,6 +30,7 @@ export default function App() {
   const [form, setForm] = useState({
     customer_name: '',
     phone: '',
+    customer_email: '',
     address: '',
     area: 'dhaka',
     note: '',
@@ -42,11 +62,7 @@ export default function App() {
   }, [])
 
   const change = (id, d) =>
-    setQty((q) => {
-      const p = products.find((x) => x.id === id)
-      const next = Math.max(0, (q[id] || 0) + d)
-      return { ...q, [id]: Math.min(next, p ? p.stock : next) }
-    })
+    setQty((q) => ({ ...q, [id]: Math.min(100, Math.max(0, (q[id] || 0) + d)) }))
 
   const selected = products.filter((p) => (qty[p.id] || 0) > 0)
   const itemCount = selected.reduce((s, p) => s + qty[p.id], 0)
@@ -99,27 +115,15 @@ export default function App() {
     setLoading(false)
   }
 
-  const Header = () => (
-    <header className="topbar">
-      <div className="topbar-inner">
-        <div className="logo">MyShop</div>
-        <input
-          className="search"
-          placeholder="Search in MyShop"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button type="button" className="cart-btn" onClick={goCheckout}>
-          🛒 <span className="badge">{itemCount}</span>
-        </button>
-      </div>
-    </header>
-  )
-
   if (done) {
     return (
       <>
-        <Header />
+        <Header
+          search={search}
+          itemCount={itemCount}
+          onSearch={(e) => setSearch(e.target.value)}
+          onCart={goCheckout}
+        />
         <div className="container">
           <div className="box success">
             <div className="tick">✓</div>
@@ -141,7 +145,12 @@ export default function App() {
 
   return (
     <>
-      <Header />
+      <Header
+        search={search}
+        itemCount={itemCount}
+        onSearch={(e) => setSearch(e.target.value)}
+        onCart={goCheckout}
+      />
 
       <div className="strip">
         <span>💵 Cash on Delivery</span>
@@ -165,14 +174,7 @@ export default function App() {
                 <div className="pname">{p.name}</div>
                 <div className="pdesc">{p.description}</div>
                 <div className="pprice">{money(p.price)}</div>
-                                {p.stock > 0 && p.stock <= 5 && (
-                  <div className="lowstock">Only {p.stock} left!</div>
-                )}
-                {p.stock <= 0 ? (
-                  <button type="button" className="add soldout" disabled>
-                    Out of Stock
-                  </button>
-                ) : (qty[p.id] || 0) === 0 ? (
+                {(qty[p.id] || 0) === 0 ? (
                   <button
                     type="button"
                     className="add"
@@ -215,6 +217,16 @@ export default function App() {
                 title="Enter a valid 11-digit Bangladeshi mobile number"
                 value={form.phone}
                 onChange={setField('phone')}
+              />
+
+              <label>Email Address *</label>
+              <input
+                required
+                type="email"
+                maxLength="254"
+                placeholder="you@example.com"
+                value={form.customer_email}
+                onChange={setField('customer_email')}
               />
 
               <label>Delivery Area *</label>

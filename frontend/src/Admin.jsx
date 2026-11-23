@@ -292,6 +292,7 @@ function Orders({ token, logout }) {
   const [orders, setOrders] = useState([])
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [statusError, setStatusError] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -310,15 +311,17 @@ function Orders({ token, logout }) {
   }, [load])
 
   const changeStatus = async (id, status) => {
+    setStatusError('')
     try {
       await api(`/api/admin/orders/${id}`, token, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
       })
-      load()
+      await load()
     } catch (e) {
       if (e.message === 'UNAUTH') logout()
+      else setStatusError(e.message)
     }
   }
 
@@ -346,6 +349,7 @@ function Orders({ token, logout }) {
         <button className="refresh" onClick={load}>↻ Refresh</button>
       </div>
 
+      {statusError && <p className="adm-error">{statusError}</p>}
       {loading && <p>Loading...</p>}
       {!loading && shown.length === 0 && <p className="adm-muted">No orders found.</p>}
 
@@ -363,6 +367,7 @@ function Orders({ token, logout }) {
             <div>
               <p><b>{o.customer_name}</b></p>
               <p>📞 <a href={`tel:${o.phone}`}>{o.phone}</a></p>
+              {o.customer_email && <p>✉️ {o.customer_email}</p>}
               <p>📍 {o.address}</p>
               <p className="adm-muted">
                 Area: {o.area_name || ({ dhaka: 'Inside Dhaka', outside: 'Outside Dhaka' }[o.area] || o.area)}

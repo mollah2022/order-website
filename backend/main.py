@@ -1,6 +1,9 @@
 import os
+import smtplib
+import ssl
 import uuid
 from datetime import datetime, timedelta
+from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
 
@@ -22,6 +25,11 @@ SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = "HS256"
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
+SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USERNAME)
 
 app = FastAPI(title="Order API")
 app.add_middleware(
@@ -62,6 +70,14 @@ def create_admin():
            )"""
     )
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS area_name VARCHAR(100)")
+    cur.execute(
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_email VARCHAR(254) NOT NULL DEFAULT ''"
+    )
+    cur.execute(
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN NOT NULL DEFAULT TRUE"
+    )
+    cur.execute("ALTER TABLE orders ALTER COLUMN stock_deducted SET DEFAULT FALSE")
+    cur.execute("UPDATE orders SET stock_deducted=FALSE WHERE status='cancelled'")
     cur.execute("SELECT COUNT(*) AS count FROM delivery_areas")
     if cur.fetchone()["count"] == 0:
         settings = get_settings(cur)
@@ -145,6 +161,10 @@ class Item(BaseModel):
 class OrderIn(BaseModel):
     customer_name: str = Field(min_length=2, max_length=150)
     phone: str = Field(min_length=11, max_length=14)
+    customer_email: str = Field(
+        max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
     address: str = Field(min_length=5)
     area: str  # "dhaka" or "outside"
     note: Optional[str] = None
@@ -172,29 +192,22 @@ def create_order(order: OrderIn):
         lines = []
         for it in order.items:
             cur.execute(
-                """UPDATE products SET stock = stock - %s
-                   WHERE id=%s AND is_active=TRUE AND stock >= %s
-                   RETURNING id, name, price""",
-                (it.quantity, it.product_id, it.quantity),
+                """SELECT id, name, price FROM products
+                   WHERE id=%s AND is_active=TRUE""",
+                (it.product_id,),
             )
             p = cur.fetchone()
             if not p:
-                cur.execute("SELECT name, stock FROM products WHERE id=%s", (it.product_id,))
-                info = cur.fetchone()
-                if info:
-                    raise HTTPException(
-                        400, f"Sorry, only {info['stock']} left for {info['name']}"
-                    )
                 raise HTTPException(400, f"Product {it.product_id} not found")
             subtotal += float(p["price"]) * it.quantity
             lines.append((p, it.quantity))
         total = subtotal + delivery
         cur.execute(
-            """INSERT INTO orders (customer_name, phone, address, area, area_name,
-               note, subtotal, delivery_charge, total)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (order.customer_name, order.phone, order.address, str(area_id),
-             area["name"], order.note, subtotal, delivery, total),
+            """INSERT INTO orders (customer_name, phone, customer_email, address,
+               area, area_name, note, subtotal, delivery_charge, total)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (order.customer_name, order.phone, order.customer_email, order.address,
+             str(area_id), area["name"], order.note, subtotal, delivery, total),
         )
         order_id = cur.fetchone()["id"]
         for p, qty in lines:
@@ -393,37 +406,105 @@ class StatusIn(BaseModel):
     status: str
 
 
+def send_order_confirmation_email(order_id: int, customer_email: str) -> None:
+    if not SMTP_USERNAME or not SMTP_PASSWORD or not SMTP_FROM_EMAIL:
+        raise HTTPException(
+            503,
+            "Email is not configured. Set SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM_EMAIL.",
+        )
+    message = EmailMessage()
+    message["Subject"] = f"Your order #{order_id} is confirmed"
+    message["From"] = SMTP_FROM_EMAIL
+    message["To"] = customer_email
+    message.set_content(
+        f"Your order #{order_id} has been confirmed. "
+        "We will contact you when it is ready for delivery."
+    )
+    try:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
+            smtp.starttls(context=ssl.create_default_context())
+            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+            smtp.send_message(message)
+    except smtplib.SMTPAuthenticationError as exc:
+        raise HTTPException(
+            502,
+            "Gmail rejected the SMTP login. Use a valid 16-character Google App Password, not your Gmail sign-in password.",
+        ) from exc
+    except smtplib.SMTPServerDisconnected as exc:
+        raise HTTPException(
+            502,
+            "The SMTP server closed the connection. Check SMTP settings and use a valid Google App Password.",
+        ) from exc
+    except (OSError, smtplib.SMTPException) as exc:
+        raise HTTPException(
+            502,
+            "Confirmation email could not be sent; order status was not changed.",
+        ) from exc
+
+
 @app.patch("/api/admin/orders/{order_id}")
 def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_admin)):
     if body.status not in ("pending", "confirmed", "shipped", "delivered", "cancelled"):
         raise HTTPException(400, "Invalid status")
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("SELECT status FROM orders WHERE id=%s", (order_id,))
-    row = cur.fetchone()
-    if not row:
+    try:
+        cur.execute(
+            """SELECT status, stock_deducted, customer_email
+               FROM orders WHERE id=%s FOR UPDATE""",
+            (order_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Order not found")
+        old = row["status"]
+        new = body.status
+        stock_deducted = row["stock_deducted"]
+
+        if new == "delivered" and not stock_deducted:
+            cur.execute(
+                """UPDATE products p SET stock = p.stock - oi.quantity
+                   FROM order_items oi
+                   WHERE oi.order_id=%s AND oi.product_id = p.id""",
+                (order_id,),
+            )
+            stock_deducted = True
+        elif old == "delivered" and new != "delivered" and stock_deducted:
+            cur.execute(
+                """UPDATE products p SET stock = p.stock + oi.quantity
+                   FROM order_items oi
+                   WHERE oi.order_id=%s AND oi.product_id = p.id""",
+                (order_id,),
+            )
+            stock_deducted = False
+        elif old != "delivered" and new == "cancelled" and stock_deducted:
+            cur.execute(
+                """UPDATE products p SET stock = p.stock + oi.quantity
+                   FROM order_items oi
+                   WHERE oi.order_id=%s AND oi.product_id = p.id""",
+                (order_id,),
+            )
+            stock_deducted = False
+
+        if new == "confirmed" and old != "confirmed":
+            if not row["customer_email"]:
+                raise HTTPException(
+                    400,
+                    "This order has no customer email address; confirmation was not sent.",
+                )
+            send_order_confirmation_email(order_id, row["customer_email"])
+
+        cur.execute(
+            "UPDATE orders SET status=%s, stock_deducted=%s WHERE id=%s",
+            (new, stock_deducted, order_id),
+        )
+        conn.commit()
+        return {"ok": True}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
         conn.close()
-        raise HTTPException(404, "Order not found")
-    old = row["status"]
-    new = body.status
-    if old != "cancelled" and new == "cancelled":
-        cur.execute(
-            """UPDATE products p SET stock = p.stock + oi.quantity
-               FROM order_items oi
-               WHERE oi.order_id=%s AND oi.product_id = p.id""",
-            (order_id,),
-        )
-    elif old == "cancelled" and new != "cancelled":
-        cur.execute(
-            """UPDATE products p SET stock = GREATEST(p.stock - oi.quantity, 0)
-               FROM order_items oi
-               WHERE oi.order_id=%s AND oi.product_id = p.id""",
-            (order_id,),
-        )
-    cur.execute("UPDATE orders SET status=%s WHERE id=%s", (new, order_id))
-    conn.commit()
-    conn.close()
-    return {"ok": True}
 
 
 @app.post("/api/admin/products/upload")

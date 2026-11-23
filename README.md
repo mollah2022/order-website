@@ -20,6 +20,10 @@ You can add areas, change their names and fees, and disable or re-enable them.
 Active areas appear in checkout, and their configured fees are included in new
 order totals.
 
+Product stock does not block or change when a customer places an order. Stock is
+deducted when an admin marks the order as delivered; cancelling or moving a
+delivered order back to another status restores the deducted stock.
+
 ## Development
 
 For the Vite development server and backend reload mode, run:
@@ -36,4 +40,11 @@ at `http://localhost:8000/`.
 The backend requires `SECRET_KEY` and `ADMIN_PASSWORD` at startup. Database
 credentials and admin credentials belong in the local `.env` file or another
 private environment-variable store, never in source control.
+
+Checkout requires the customer's email address. When an admin changes an order
+to `confirmed`, the backend emails the customer using the SMTP settings in `.env`.
+For Gmail, set `SMTP_USERNAME` and `SMTP_FROM_EMAIL` to the sender's Gmail
+address and `SMTP_PASSWORD` to a Google App Password (not the Gmail sign-in
+password), then recreate the backend container. Confirmation is not saved if
+the email cannot be sent.
 # order-website
