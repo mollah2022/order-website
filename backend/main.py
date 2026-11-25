@@ -1,13 +1,12 @@
 import os
-import smtplib
-import ssl
 import uuid
 from datetime import datetime, timedelta
-from email.message import EmailMessage
 from pathlib import Path
 from typing import List, Optional
 
 import bcrypt
+import cloudinary
+import cloudinary.uploader
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile
@@ -25,11 +24,9 @@ SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = "HS256"
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USERNAME = os.getenv("SMTP_USERNAME", "")
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_FROM_EMAIL = os.getenv("SMTP_FROM_EMAIL", SMTP_USERNAME)
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
 
 app = FastAPI(title="Order API")
 app.add_middleware(
@@ -43,6 +40,20 @@ oauth2 = OAuth2PasswordBearer(tokenUrl="/api/admin/login")
 UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+
+def configure_cloudinary():
+    if not all((CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET)):
+        raise HTTPException(
+            503,
+            "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET.",
+        )
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+        secure=True,
+    )
 
 
 def get_conn():
@@ -71,13 +82,24 @@ def create_admin():
     )
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS area_name VARCHAR(100)")
     cur.execute(
-        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_email VARCHAR(254) NOT NULL DEFAULT ''"
-    )
-    cur.execute(
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN NOT NULL DEFAULT TRUE"
     )
     cur.execute("ALTER TABLE orders ALTER COLUMN stock_deducted SET DEFAULT FALSE")
     cur.execute("UPDATE orders SET stock_deducted=FALSE WHERE status='cancelled'")
+    cur.execute(
+        """UPDATE products p SET stock = p.stock + pending.quantity
+           FROM (
+               SELECT oi.product_id, SUM(oi.quantity)::INTEGER AS quantity
+               FROM orders o
+               JOIN order_items oi ON oi.order_id = o.id
+               WHERE o.status = 'pending' AND o.stock_deducted = TRUE
+               GROUP BY oi.product_id
+           ) pending
+           WHERE p.id = pending.product_id"""
+    )
+    cur.execute(
+        "UPDATE orders SET stock_deducted=FALSE WHERE status='pending' AND stock_deducted=TRUE"
+    )
     cur.execute("SELECT COUNT(*) AS count FROM delivery_areas")
     if cur.fetchone()["count"] == 0:
         settings = get_settings(cur)
@@ -161,10 +183,6 @@ class Item(BaseModel):
 class OrderIn(BaseModel):
     customer_name: str = Field(min_length=2, max_length=150)
     phone: str = Field(min_length=11, max_length=14)
-    customer_email: str = Field(
-        max_length=254,
-        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-    )
     address: str = Field(min_length=5)
     area: str  # "dhaka" or "outside"
     note: Optional[str] = None
@@ -203,11 +221,11 @@ def create_order(order: OrderIn):
             lines.append((p, it.quantity))
         total = subtotal + delivery
         cur.execute(
-            """INSERT INTO orders (customer_name, phone, customer_email, address,
-               area, area_name, note, subtotal, delivery_charge, total)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
-            (order.customer_name, order.phone, order.customer_email, order.address,
-             str(area_id), area["name"], order.note, subtotal, delivery, total),
+            """INSERT INTO orders (customer_name, phone, address, area, area_name,
+               note, subtotal, delivery_charge, total)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+            (order.customer_name, order.phone, order.address, str(area_id),
+             area["name"], order.note, subtotal, delivery, total),
         )
         order_id = cur.fetchone()["id"]
         for p, qty in lines:
@@ -406,42 +424,6 @@ class StatusIn(BaseModel):
     status: str
 
 
-def send_order_confirmation_email(order_id: int, customer_email: str) -> None:
-    if not SMTP_USERNAME or not SMTP_PASSWORD or not SMTP_FROM_EMAIL:
-        raise HTTPException(
-            503,
-            "Email is not configured. Set SMTP_USERNAME, SMTP_PASSWORD, and SMTP_FROM_EMAIL.",
-        )
-    message = EmailMessage()
-    message["Subject"] = f"Your order #{order_id} is confirmed"
-    message["From"] = SMTP_FROM_EMAIL
-    message["To"] = customer_email
-    message.set_content(
-        f"Your order #{order_id} has been confirmed. "
-        "We will contact you when it is ready for delivery."
-    )
-    try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as smtp:
-            smtp.starttls(context=ssl.create_default_context())
-            smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
-            smtp.send_message(message)
-    except smtplib.SMTPAuthenticationError as exc:
-        raise HTTPException(
-            502,
-            "Gmail rejected the SMTP login. Use a valid 16-character Google App Password, not your Gmail sign-in password.",
-        ) from exc
-    except smtplib.SMTPServerDisconnected as exc:
-        raise HTTPException(
-            502,
-            "The SMTP server closed the connection. Check SMTP settings and use a valid Google App Password.",
-        ) from exc
-    except (OSError, smtplib.SMTPException) as exc:
-        raise HTTPException(
-            502,
-            "Confirmation email could not be sent; order status was not changed.",
-        ) from exc
-
-
 @app.patch("/api/admin/orders/{order_id}")
 def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_admin)):
     if body.status not in ("pending", "confirmed", "shipped", "delivered", "cancelled"):
@@ -450,8 +432,7 @@ def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_ad
     cur = conn.cursor()
     try:
         cur.execute(
-            """SELECT status, stock_deducted, customer_email
-               FROM orders WHERE id=%s FOR UPDATE""",
+            "SELECT status, stock_deducted FROM orders WHERE id=%s FOR UPDATE",
             (order_id,),
         )
         row = cur.fetchone()
@@ -461,7 +442,7 @@ def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_ad
         new = body.status
         stock_deducted = row["stock_deducted"]
 
-        if new == "delivered" and not stock_deducted:
+        if new == "confirmed" and not stock_deducted:
             cur.execute(
                 """UPDATE products p SET stock = p.stock - oi.quantity
                    FROM order_items oi
@@ -469,7 +450,7 @@ def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_ad
                 (order_id,),
             )
             stock_deducted = True
-        elif old == "delivered" and new != "delivered" and stock_deducted:
+        elif new in ("pending", "cancelled") and stock_deducted:
             cur.execute(
                 """UPDATE products p SET stock = p.stock + oi.quantity
                    FROM order_items oi
@@ -477,22 +458,6 @@ def update_status(order_id: int, body: StatusIn, admin: str = Depends(current_ad
                 (order_id,),
             )
             stock_deducted = False
-        elif old != "delivered" and new == "cancelled" and stock_deducted:
-            cur.execute(
-                """UPDATE products p SET stock = p.stock + oi.quantity
-                   FROM order_items oi
-                   WHERE oi.order_id=%s AND oi.product_id = p.id""",
-                (order_id,),
-            )
-            stock_deducted = False
-
-        if new == "confirmed" and old != "confirmed":
-            if not row["customer_email"]:
-                raise HTTPException(
-                    400,
-                    "This order has no customer email address; confirmation was not sent.",
-                )
-            send_order_confirmation_email(order_id, row["customer_email"])
 
         cur.execute(
             "UPDATE orders SET status=%s, stock_deducted=%s WHERE id=%s",
@@ -512,16 +477,65 @@ async def upload_product_image(
     file: UploadFile = File(...),
     admin: str = Depends(current_admin),
 ):
-    allowed = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
+    allowed = {"image/jpeg", "image/png", "image/webp", "image/gif"}
     if file.content_type not in allowed:
         raise HTTPException(400, "Only JPG, PNG, WEBP, or GIF images are allowed")
     content = await file.read()
     if len(content) > 5 * 1024 * 1024:
         raise HTTPException(400, "Image must be 5 MB or smaller")
-    filename = f"{uuid.uuid4().hex}{allowed[file.content_type]}"
-    path = UPLOAD_DIR / filename
-    path.write_bytes(content)
-    return {"url": f"/uploads/{filename}"}
+    configure_cloudinary()
+    try:
+        result = cloudinary.uploader.upload(
+            content,
+            folder="order-website/products",
+            public_id=uuid.uuid4().hex,
+            resource_type="image",
+        )
+    except cloudinary.exceptions.Error as exc:
+        raise HTTPException(502, "Cloudinary image upload failed.") from exc
+    return {"url": result["secure_url"]}
+
+
+@app.post("/api/admin/products/migrate-images")
+def migrate_product_images(admin: str = Depends(current_admin)):
+    configure_cloudinary()
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, image_url FROM products WHERE image_url LIKE '/uploads/%' ORDER BY id"
+        )
+        products = cur.fetchall()
+        migrated = 0
+        failures = []
+        for product in products:
+            filename = Path(product["image_url"]).name
+            image_path = (UPLOAD_DIR / filename).resolve()
+            if image_path.parent != UPLOAD_DIR.resolve() or not image_path.is_file():
+                failures.append({"product_id": product["id"], "reason": "Local image file not found"})
+                continue
+            try:
+                result = cloudinary.uploader.upload(
+                    str(image_path),
+                    folder="order-website/products",
+                    public_id=uuid.uuid4().hex,
+                    resource_type="image",
+                )
+            except cloudinary.exceptions.Error:
+                failures.append({"product_id": product["id"], "reason": "Cloudinary upload failed"})
+                continue
+            cur.execute(
+                "UPDATE products SET image_url=%s WHERE id=%s",
+                (result["secure_url"], product["id"]),
+            )
+            migrated += 1
+        conn.commit()
+        return {"migrated": migrated, "failed": failures}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 class ProductIn(BaseModel):

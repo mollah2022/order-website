@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import './admin.css'
+import useTheme from './useTheme'
 
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
 const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
@@ -20,6 +21,7 @@ async function api(path, token, options = {}) {
 }
 
 export default function Admin() {
+  const { isDark, toggleTheme } = useTheme()
   const [token, setToken] = useState(localStorage.getItem('admin_token') || '')
 
   const logout = () => {
@@ -30,6 +32,8 @@ export default function Admin() {
   if (!token) {
     return (
       <Login
+        isDark={isDark}
+        toggleTheme={toggleTheme}
         onLogin={(t) => {
           localStorage.setItem('admin_token', t)
           setToken(t)
@@ -37,10 +41,10 @@ export default function Admin() {
       />
     )
   }
-  return <Dashboard token={token} logout={logout} />
+  return <Dashboard token={token} logout={logout} isDark={isDark} toggleTheme={toggleTheme} />
 }
 
-function Login({ onLogin }) {
+function Login({ onLogin, isDark, toggleTheme }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -69,10 +73,13 @@ function Login({ onLogin }) {
     <div className="adm-login">
       <form className="adm-box" onSubmit={submit}>
         <h2>Admin Login</h2>
-        <label>Username</label>
-        <input value={username} onChange={(e) => setUsername(e.target.value)} required />
-        <label>Password</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <button type="button" className="adm-theme-toggle" onClick={toggleTheme} aria-pressed={isDark}>
+          {isDark ? '☀️ Switch to light mode' : '🌙 Switch to dark mode'}
+        </button>
+        <label htmlFor="admin-username">Username</label>
+        <input id="admin-username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+        <label htmlFor="admin-password">Password</label>
+        <input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         {error && <p className="adm-error">{error}</p>}
         <button className="adm-btn" disabled={loading}>
           {loading ? 'Logging in...' : 'LOGIN'}
@@ -82,18 +89,21 @@ function Login({ onLogin }) {
   )
 }
 
-function Dashboard({ token, logout }) {
+function Dashboard({ token, logout, isDark, toggleTheme }) {
   const [tab, setTab] = useState('orders')
 
   return (
     <div>
       <header className="adm-top">
         <b>MyShop Admin</b>
-        <nav>
+        <nav aria-label="Admin sections">
           <button className={tab === 'orders' ? 'on' : ''} onClick={() => setTab('orders')}>Orders</button>
           <button className={tab === 'products' ? 'on' : ''} onClick={() => setTab('products')}>Products</button>
           <button className={tab === 'delivery' ? 'on' : ''} onClick={() => setTab('delivery')}>Delivery Fee</button>
         </nav>
+        <button type="button" className="adm-theme-toggle" onClick={toggleTheme} aria-pressed={isDark}>
+          {isDark ? '☀️ Light' : '🌙 Dark'}
+        </button>
         <button className="adm-out" onClick={logout}>Logout</button>
       </header>
       <main className="adm-main">
@@ -367,7 +377,6 @@ function Orders({ token, logout }) {
             <div>
               <p><b>{o.customer_name}</b></p>
               <p>📞 <a href={`tel:${o.phone}`}>{o.phone}</a></p>
-              {o.customer_email && <p>✉️ {o.customer_email}</p>}
               <p>📍 {o.address}</p>
               <p className="adm-muted">
                 Area: {o.area_name || ({ dhaka: 'Inside Dhaka', outside: 'Outside Dhaka' }[o.area] || o.area)}
@@ -421,6 +430,7 @@ function Products({ token, logout }) {
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState('')
   const [msg, setMsg] = useState('')
+  const [migratingImages, setMigratingImages] = useState(false)
 
     const copyLink = (p) => {
     const link = `${window.location.origin}/p/${p.id}`
@@ -451,6 +461,27 @@ function Products({ token, logout }) {
   const set = (k) => (e) =>
     setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
 
+  const migrateImages = async () => {
+    setMigratingImages(true)
+    setMsg('')
+    try {
+      const result = await api('/api/admin/products/migrate-images', token, {
+        method: 'POST',
+      })
+      setMsg(
+        result.failed.length
+          ? `Migrated ${result.migrated}; ${result.failed.length} image(s) need attention.`
+          : `Migrated ${result.migrated} existing image(s) to Cloudinary.`
+      )
+      await load()
+    } catch (e) {
+      if (e.message === 'UNAUTH') logout()
+      else setMsg(e.message)
+    } finally {
+      setMigratingImages(false)
+    }
+  }
+
   const save = async (e) => {
     e.preventDefault()
     try {
@@ -474,6 +505,7 @@ function Products({ token, logout }) {
       load()
     } catch (e) {
       if (e.message === 'UNAUTH') logout()
+      else setMsg(e.message)
     }
   }
 
@@ -512,20 +544,21 @@ function Products({ token, logout }) {
         <h3>{editId ? `Edit Product #${editId}` : 'Add New Product'}</h3>
         <div className="adm-grid">
           <div>
-            <label>Name *</label>
-            <input required value={form.name} onChange={set('name')} />
+            <label htmlFor="product-name">Name *</label>
+            <input id="product-name" required value={form.name} onChange={set('name')} />
           </div>
           <div>
-            <label>Price (৳) *</label>
-            <input required type="number" min="0" value={form.price} onChange={set('price')} />
+            <label htmlFor="product-price">Price (৳) *</label>
+            <input id="product-price" required type="number" min="0" value={form.price} onChange={set('price')} />
           </div>
           <div>
-            <label>Stock</label>
-            <input type="number" min="0" value={form.stock} onChange={set('stock')} />
+            <label htmlFor="product-stock">Stock</label>
+            <input id="product-stock" type="number" min="0" value={form.stock} onChange={set('stock')} />
           </div>
           <div>
-            <label>Product Image</label>
+            <label htmlFor="product-image">Product Image</label>
             <input
+              id="product-image"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
               onChange={(e) => {
@@ -543,8 +576,8 @@ function Products({ token, logout }) {
             )}
           </div>
         </div>
-        <label>Description</label>
-        <textarea rows="2" value={form.description} onChange={set('description')} />
+        <label htmlFor="product-description">Description</label>
+        <textarea id="product-description" rows="2" value={form.description} onChange={set('description')} />
         <label className="adm-check">
           <input type="checkbox" checked={form.is_active} onChange={set('is_active')} />
           Visible on website
@@ -560,6 +593,14 @@ function Products({ token, logout }) {
 
       <div className="adm-filters">
         <h3>All Products ({products.length})</h3>
+        <button
+          className="refresh"
+          type="button"
+          onClick={migrateImages}
+          disabled={migratingImages}
+        >
+          {migratingImages ? 'Migrating images...' : 'Move old images to Cloudinary'}
+        </button>
         <button className="refresh" type="button" onClick={load}>↻ Refresh stock</button>
       </div>
       <div className="adm-table-wrap">

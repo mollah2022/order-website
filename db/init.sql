@@ -13,7 +13,6 @@ CREATE TABLE orders (
     id SERIAL PRIMARY KEY,
     customer_name VARCHAR(150) NOT NULL,
     phone VARCHAR(20) NOT NULL,
-    customer_email VARCHAR(254) NOT NULL DEFAULT '',
     address TEXT NOT NULL,
     area VARCHAR(20) NOT NULL,
     area_name VARCHAR(100),

@@ -1,8 +1,25 @@
 import { useEffect, useState } from 'react'
+import useTheme from './useTheme'
 
 const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
 
-function Header({ search, itemCount, onSearch, onCart }) {
+function ThemeToggle({ isDark, onToggle, className = '' }) {
+  return (
+    <button
+      type="button"
+      className={`theme-toggle ${className}`}
+      onClick={onToggle}
+      aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+      aria-pressed={isDark}
+      title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+    >
+      <span aria-hidden="true">{isDark ? '☀️' : '🌙'}</span>
+      <span>{isDark ? 'Light' : 'Dark'}</span>
+    </button>
+  )
+}
+
+function Header({ search, itemCount, onSearch, onCart, isDark, onToggleTheme }) {
   return (
     <header className="topbar">
       <div className="topbar-inner">
@@ -13,6 +30,7 @@ function Header({ search, itemCount, onSearch, onCart }) {
           value={search}
           onChange={onSearch}
         />
+        <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
         <button type="button" className="cart-btn" onClick={onCart}>
           🛒 <span className="badge">{itemCount}</span>
         </button>
@@ -22,6 +40,7 @@ function Header({ search, itemCount, onSearch, onCart }) {
 }
 
 export default function App() {
+  const { isDark, toggleTheme } = useTheme()
   const [products, setProducts] = useState([])
   const [deliveryAreas, setDeliveryAreas] = useState([])
   const [areasLoading, setAreasLoading] = useState(true)
@@ -30,7 +49,6 @@ export default function App() {
   const [form, setForm] = useState({
     customer_name: '',
     phone: '',
-    customer_email: '',
     address: '',
     area: 'dhaka',
     note: '',
@@ -123,6 +141,8 @@ export default function App() {
           itemCount={itemCount}
           onSearch={(e) => setSearch(e.target.value)}
           onCart={goCheckout}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
         />
         <div className="container">
           <div className="box success">
@@ -150,6 +170,8 @@ export default function App() {
         itemCount={itemCount}
         onSearch={(e) => setSearch(e.target.value)}
         onCart={goCheckout}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
       />
 
       <div className="strip">
@@ -217,16 +239,6 @@ export default function App() {
                 title="Enter a valid 11-digit Bangladeshi mobile number"
                 value={form.phone}
                 onChange={setField('phone')}
-              />
-
-              <label>Email Address *</label>
-              <input
-                required
-                type="email"
-                maxLength="254"
-                placeholder="you@example.com"
-                value={form.customer_email}
-                onChange={setField('customer_email')}
               />
 
               <label>Delivery Area *</label>
