@@ -1,6 +1,6 @@
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -66,12 +66,20 @@ def get_conn():
     }
     return psycopg2.connect(**connection_options)
 
+
 @app.on_event("startup")
 def create_admin():
     if not SECRET_KEY or not ADMIN_PASSWORD:
         raise RuntimeError("SECRET_KEY and ADMIN_PASSWORD environment variables are required")
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("DROP INDEX IF EXISTS admins_email_lower_idx")
+    cur.execute("ALTER TABLE admins DROP COLUMN IF EXISTS email")
+    cur.execute("ALTER TABLE admins DROP COLUMN IF EXISTS is_verified")
+    cur.execute("ALTER TABLE admins DROP COLUMN IF EXISTS verification_token_hash")
+    cur.execute("ALTER TABLE admins DROP COLUMN IF EXISTS verification_expires_at")
+    cur.execute("ALTER TABLE admins DROP COLUMN IF EXISTS verification_sent_at")
+    cur.execute("ALTER TABLE admins ALTER COLUMN username TYPE VARCHAR(50)")
     cur.execute(
         """CREATE TABLE IF NOT EXISTS delivery_areas (
                id SERIAL PRIMARY KEY,
@@ -147,9 +155,19 @@ def get_settings(cur):
 def current_admin(token: str = Depends(oauth2)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        return payload["sub"]
+        username = payload["sub"]
     except (JWTError, KeyError):
         raise HTTPException(status_code=401, detail="Invalid token")
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT username FROM admins WHERE username=%s", (username,))
+        admin = cur.fetchone()
+    finally:
+        conn.close()
+    if not admin:
+        raise HTTPException(status_code=401, detail="Invalid admin account")
+    return admin["username"]
 
 
 # ---------- Public API ----------
@@ -268,7 +286,7 @@ def login(form: OAuth2PasswordRequestForm = Depends()):
     if not admin or not bcrypt.checkpw(form.password.encode(), admin["password_hash"].encode()):
         raise HTTPException(status_code=401, detail="Wrong username or password")
     token = jwt.encode(
-        {"sub": admin["username"], "exp": datetime.utcnow() + timedelta(hours=12)},
+        {"sub": admin["username"], "exp": datetime.now(timezone.utc) + timedelta(hours=12)},
         SECRET_KEY, algorithm=ALGORITHM,
     )
     return {"access_token": token, "token_type": "bearer"}

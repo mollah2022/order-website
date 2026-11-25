@@ -349,7 +349,7 @@ html[data-theme="dark"] .adm-ok { border-color: #315a43; background: #20372c; co
 html[data-theme="dark"] .adm-top button:focus-visible,
 html[data-theme="dark"] .adm-btn:focus-visible,
 html[data-theme="dark"] .adm-filters button:focus-visible,
-html[data-theme="dark"] .adm-actions button:focus-visible { outline-color: #d2c4ff; }
+html[data-theme="dark"] .adm-actions button:focus-visible { outline: 3px solid #d2c4ff; outline-offset: 2px; }
 
 @media (max-width: 700px) {
   .adm-top { gap: 10px; padding: 11px 14px; }

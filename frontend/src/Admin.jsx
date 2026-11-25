@@ -83,9 +83,22 @@ function Login({ onLogin, isDark, toggleTheme }) {
           {isDark ? '☀️ Switch to light mode' : '🌙 Switch to dark mode'}
         </button>
         <label htmlFor="admin-username">Username</label>
-        <input id="admin-username" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+        <input
+          id="admin-username"
+          autoComplete="username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+        />
         <label htmlFor="admin-password">Password</label>
-        <input id="admin-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <input
+          id="admin-password"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
         {error && <p className="adm-error">{error}</p>}
         <button className="adm-btn" disabled={loading}>
           {loading ? 'Logging in...' : 'LOGIN'}

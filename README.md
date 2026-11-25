@@ -50,8 +50,9 @@ at `http://localhost:8000/`.
 
 ## Configuration
 
-The backend requires `SECRET_KEY` and `ADMIN_PASSWORD` at startup. Database
-credentials and admin credentials belong in the local `.env` file or another
-private environment-variable store, never in source control.
+Admin access uses the `ADMIN_USERNAME` and `ADMIN_PASSWORD` values in `.env`.
+The backend creates the configured admin account on startup if it does not
+already exist. Database and admin credentials belong in the local `.env` file
+or another private environment-variable store, never in source control.
 
 # order-website
