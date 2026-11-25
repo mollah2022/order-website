@@ -114,7 +114,7 @@ function Dashboard({ token, logout, isDark, toggleTheme }) {
   return (
     <div>
       <header className="adm-top">
-        <b>MyShop Admin</b>
+        <b>Gramer Bazar Admin</b>
         <nav aria-label="Admin sections">
           <button className={tab === 'orders' ? 'on' : ''} onClick={() => setTab('orders')}>Orders</button>
           <button className={tab === 'products' ? 'on' : ''} onClick={() => setTab('products')}>Products</button>

@@ -23,10 +23,10 @@ function Header({ search, itemCount, onSearch, onCart, isDark, onToggleTheme }) 
   return (
     <header className="topbar">
       <div className="topbar-inner">
-        <div className="logo">MyShop</div>
+        <div className="logo">Gramer Bazar</div>
         <input
           className="search"
-          placeholder="Search in MyShop"
+          placeholder="Search in Gramer Bazar"
           value={search}
           onChange={onSearch}
         />
