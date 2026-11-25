@@ -84,6 +84,16 @@ def create_admin():
     cur.execute(
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS stock_deducted BOOLEAN NOT NULL DEFAULT TRUE"
     )
+    cur.execute(
+        """SELECT data_type FROM information_schema.columns
+           WHERE table_name='orders' AND column_name='created_at'"""
+    )
+    created_at_type = cur.fetchone()
+    if created_at_type and created_at_type["data_type"] == "timestamp without time zone":
+        cur.execute(
+            """ALTER TABLE orders ALTER COLUMN created_at TYPE TIMESTAMPTZ
+               USING created_at AT TIME ZONE 'UTC'"""
+        )
     cur.execute("ALTER TABLE orders ALTER COLUMN stock_deducted SET DEFAULT FALSE")
     cur.execute("UPDATE orders SET stock_deducted=FALSE WHERE status='cancelled'")
     cur.execute(

@@ -4,6 +4,12 @@ import useTheme from './useTheme'
 
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
 const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
+const formatOrderTime = (value) =>
+  new Intl.DateTimeFormat('en-BD', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Dhaka',
+  }).format(new Date(value))
 
 async function api(path, token, options = {}) {
   const res = await fetch(path, {
@@ -368,7 +374,9 @@ function Orders({ token, logout }) {
           <div className="adm-order-head">
             <div>
               <b>Order #{o.id}</b>
-              <span className="adm-date">{new Date(o.created_at).toLocaleString()}</span>
+              <span className="adm-date" title="Bangladesh time">
+                {formatOrderTime(o.created_at)} (BD)
+              </span>
             </div>
             <span className={`adm-badge ${o.status}`}>{o.status}</span>
           </div>

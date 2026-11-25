@@ -24,6 +24,9 @@ The storefront and admin dashboard follow the device color theme by default.
 Use the theme toggle to switch modes; the selected preference is saved in the
 browser and shared between both pages.
 
+Order creation times are stored with timezone information and displayed in
+Bangladesh time (Asia/Dhaka) in the admin dashboard.
+
 Product image files are uploaded to Cloudinary; product records and image URLs
 are stored in PostgreSQL. Configure `CLOUDINARY_CLOUD_NAME`,
 `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in `.env`. Existing images

@@ -6,7 +6,7 @@ CREATE TABLE products (
     image_url TEXT,
     stock INTEGER DEFAULT 100,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE orders (
