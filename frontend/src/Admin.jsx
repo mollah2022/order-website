@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import './admin.css'
 import useTheme from './useTheme'
+import { apiUrl } from './api'
 
 const STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled']
 const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
@@ -12,7 +13,7 @@ const formatOrderTime = (value) =>
   }).format(new Date(value))
 
 async function api(path, token, options = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     ...options,
     headers: { ...(options.headers || {}), Authorization: 'Bearer ' + token },
   })
@@ -61,7 +62,7 @@ function Login({ onLogin, isDark, toggleTheme }) {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch('/api/admin/login', {
+      const res = await fetch(apiUrl('/api/admin/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ username, password }),
@@ -433,7 +434,7 @@ const EMPTY = { name: '', description: '', price: '', image_url: '', stock: 100,
 async function uploadProductImage(file, token) {
   const body = new FormData()
   body.append('file', file)
-  const res = await fetch('/api/admin/products/upload', {
+  const res = await fetch(apiUrl('/api/admin/products/upload'), {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + token },
     body,

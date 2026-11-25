@@ -20,6 +20,7 @@ DB_HOST = os.getenv("DB_HOST", "db")
 DB_NAME = os.getenv("POSTGRES_DB")
 DB_USER = os.getenv("POSTGRES_USER")
 DB_PASS = os.getenv("POSTGRES_PASSWORD")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = "HS256"
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -27,11 +28,16 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")
 CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME", "")
 CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY", "")
 CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET", "")
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", "*").split(",")
+    if origin.strip()
+]
 
 app = FastAPI(title="Order API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=FRONTEND_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,6 +46,11 @@ oauth2 = OAuth2PasswordBearer(tokenUrl="/api/admin/login")
 UPLOAD_DIR = Path("/app/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 def configure_cloudinary():
@@ -57,6 +68,12 @@ def configure_cloudinary():
 
 
 def get_conn():
+    if DATABASE_URL:
+        return psycopg2.connect(
+            DATABASE_URL,
+            cursor_factory=RealDictCursor,
+            sslmode="require",
+        )
     connection_options = {
         "host": DB_HOST,
         "dbname": DB_NAME,

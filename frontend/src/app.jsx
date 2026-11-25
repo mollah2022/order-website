@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import useTheme from './useTheme'
+import { apiUrl } from './api'
 
 const money = (n) => `৳${Number(n).toLocaleString('en-US')}`
 
@@ -58,10 +59,10 @@ export default function App() {
   const [done, setDone] = useState(null)
 
   useEffect(() => {
-    fetch('/api/products')
+    fetch(apiUrl('/api/products'))
       .then((r) => r.json())
       .then(setProducts)
-    fetch('/api/delivery-areas')
+    fetch(apiUrl('/api/delivery-areas'))
       .then((r) => {
         if (!r.ok) throw new Error('Could not load delivery areas.')
         return r.json()
@@ -106,7 +107,7 @@ export default function App() {
     }
     setLoading(true)
     try {
-      const res = await fetch('/api/orders', {
+      const res = await fetch(apiUrl('/api/orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

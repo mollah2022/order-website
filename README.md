@@ -48,6 +48,33 @@ docker compose up --build
 The frontend is available at `http://localhost:5173/`, and the API is available
 at `http://localhost:8000/`.
 
+## Host on Vercel, Render, and Neon
+
+1. Create a PostgreSQL project on Neon. In the Neon SQL Editor, run the contents
+   of [`db/init.sql`](./db/init.sql) once to create the tables and initial
+   sample products. Copy the pooled connection string from Neon; it must include
+   `sslmode=require`.
+2. Deploy this repository to Render using the included [`render.yaml`](./render.yaml)
+   Blueprint. When prompted, set `DATABASE_URL` to the Neon connection string,
+   choose a private `ADMIN_USERNAME` and strong `ADMIN_PASSWORD`, and set
+   `FRONTEND_ORIGINS` to the Vercel site's exact origin, such as
+   `https://your-project.vercel.app` (no trailing slash). Set the Cloudinary
+   values if Admin image uploads are needed.
+3. Wait for the Render service to become healthy, then copy its public URL,
+   for example `https://gramer-bazar-api.onrender.com`.
+4. Import the same repository into Vercel and set the project Root Directory to
+   `frontend`. Add the environment variable `VITE_API_URL` with the Render
+   service URL (no trailing slash), then deploy. Vercel builds the frontend
+   with `npm run build` and serves the `dist` output.
+5. If Vercel assigns a different production domain, add that exact origin to
+   Render's `FRONTEND_ORIGINS` and redeploy/restart the backend.
+
+The Render Blueprint keeps secrets out of the repository. The frontend API
+address is public configuration, but database credentials, admin credentials,
+the JWT secret, and Cloudinary API secret must only be entered in provider
+environment settings. Render's free web service may sleep when idle, so the
+first request after inactivity can take longer.
+
 ## Configuration
 
 Admin access uses the `ADMIN_USERNAME` and `ADMIN_PASSWORD` values in `.env`.
